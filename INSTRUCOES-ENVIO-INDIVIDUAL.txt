@@ -1,0 +1,7 @@
+Financeiro HSN - conferencia individual validada pelo Supabase
+
+A funcao Edge zoho-send-mail deve estar publicada com a operacao mode=preview.
+O botao Conferir envio individual chama a funcao, exibe duas confirmacoes e NAO envia emails.
+O envio em lote permanece bloqueado. Nenhum status e alterado pela conferencia.
+
+Para atualizar o GitHub, envie os arquivos e pastas contidos neste ZIP para a raiz do repositorio, preservando os caminhos.
