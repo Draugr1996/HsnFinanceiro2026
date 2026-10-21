@@ -36,3 +36,162 @@ html[data-theme="dark"] .content table,html[data-theme="dark"] .content th,html[
 html[data-theme="dark"] .content th{background:#23344d!important}
 html[data-theme="dark"] .content tr:nth-child(even){background:#1c2b42!important}
 html[data-theme="dark"] .content p,html[data-theme="dark"] .content label,html[data-theme="dark"] .content small{color:#b5c5db!important}
+
+/* HSN 7.2 — acabamento do modo escuro.
+   Somente apresentação: não altera menus, cobranças, eventos ou integrações.
+   Específico para evitar texto claro sobre superfícies brancas na tela Sicoob. */
+html[data-theme="dark"] .content .sicoob-history,
+html[data-theme="dark"] .content .sicoob-panel,
+html[data-theme="dark"] .content .sicoob-card,
+html[data-theme="dark"] .content .finance-controls,
+html[data-theme="dark"] .content .record,
+html[data-theme="dark"] .content .account-table-wrap,
+html[data-theme="dark"] .content .calendar-wrap,
+html[data-theme="dark"] .content .card {
+  background:#19263a!important;
+  color:#edf3ff!important;
+  border-color:#34465e!important;
+  box-shadow:0 8px 24px rgba(0,0,0,.17)!important;
+}
+html[data-theme="dark"] .content .sicoob-history-head,
+html[data-theme="dark"] .content .sicoob-history-head h2,
+html[data-theme="dark"] .content .sicoob-table-heading h2,
+html[data-theme="dark"] .content .sicoob-card-company strong,
+html[data-theme="dark"] .content .sicoob-card-field strong,
+html[data-theme="dark"] .content .sicoob-stat-value,
+html[data-theme="dark"] .content .sicoob-money,
+html[data-theme="dark"] .content .record strong,
+html[data-theme="dark"] .content .card strong {
+  color:#f4f7ff!important;
+}
+html[data-theme="dark"] .content .sicoob-history-info,
+html[data-theme="dark"] .content .sicoob-table-heading span,
+html[data-theme="dark"] .content .sicoob-card-field span,
+html[data-theme="dark"] .content .sicoob-card-company span,
+html[data-theme="dark"] .content .sicoob-card-company small,
+html[data-theme="dark"] .content .sicoob-stat-label,
+html[data-theme="dark"] .content .sicoob-stat-detail {
+  color:#b8c9e0!important;
+}
+html[data-theme="dark"] .content .sicoob-history-scroll,
+html[data-theme="dark"] .content .sicoob-table-wrap,
+html[data-theme="dark"] .content .sicoob-card-field {
+  background:#172438!important;
+  border-color:#34465e!important;
+}
+html[data-theme="dark"] .content table,
+html[data-theme="dark"] .content .sicoob-history-table,
+html[data-theme="dark"] .content .sicoob-table {
+  background:#19263a!important;
+  color:#edf3ff!important;
+}
+html[data-theme="dark"] .content table thead,
+html[data-theme="dark"] .content table th,
+html[data-theme="dark"] .content .sicoob-history-table th {
+  background:#273952!important;
+  color:#d6e3f7!important;
+  border-color:#3b506b!important;
+}
+html[data-theme="dark"] .content table tbody,
+html[data-theme="dark"] .content table tr,
+html[data-theme="dark"] .content table td,
+html[data-theme="dark"] .content .sicoob-history-table td,
+html[data-theme="dark"] .content .sicoob-history-table td small {
+  background:transparent!important;
+  color:#e4ecfa!important;
+  border-color:#34465e!important;
+}
+html[data-theme="dark"] .content table tbody tr:hover td,
+html[data-theme="dark"] .content table tbody tr:hover,
+html[data-theme="dark"] .content .sicoob-card:hover,
+html[data-theme="dark"] .content .record:hover {
+  background:#263a56!important;
+}
+html[data-theme="dark"] .content .sicoob-tabs {
+  background:#132036!important;
+  border:1px solid #31465f!important;
+}
+html[data-theme="dark"] .content .sicoob-tab {
+  background:#20324a!important;
+  color:#dbe7f7!important;
+  border:1px solid #3a516d!important;
+}
+html[data-theme="dark"] .content .sicoob-tab.active {
+  background:#ff812e!important;
+  color:#131d2e!important;
+  border-color:#ff812e!important;
+}
+html[data-theme="dark"] .content .sicoob-history-state.sent,
+html[data-theme="dark"] .content .sicoob-status.sicoob-sent,
+html[data-theme="dark"] .content .sicoob-status.sicoob-paid {
+  background:#153e36!important;
+  color:#6de6bd!important;
+}
+html[data-theme="dark"] .content .sicoob-history-state.processing {
+  background:#4b3b1e!important;
+  color:#ffdb79!important;
+}
+html[data-theme="dark"] .content .sicoob-history-state.failed {
+  background:#4c2934!important;
+  color:#ffb4ba!important;
+}
+html[data-theme="dark"] .content .sicoob-notice,
+html[data-theme="dark"] .content .hint,
+html[data-theme="dark"] .content .sicoob-empty {
+  background:#20314a!important;
+  color:#cad8ea!important;
+  border-color:#3b516d!important;
+}
+html[data-theme="dark"] .content .sicoob-history-tools input,
+html[data-theme="dark"] .content .sicoob-history-tools select,
+html[data-theme="dark"] .content .sicoob-email-group input,
+html[data-theme="dark"] .content .sicoob-card-email input {
+  background:#112039!important;
+  color:#f1f6ff!important;
+  border:1px solid #405777!important;
+}
+html[data-theme="dark"] .content .sicoob-history-tools input::placeholder,
+html[data-theme="dark"] .content .sicoob-card-email input::placeholder {
+  color:#a4bad6!important;
+}
+html[data-theme="dark"] .content .sicoob-history-tools button,
+html[data-theme="dark"] .content button.secondary {
+  background:#283a54!important;
+  color:#ecf3ff!important;
+  border-color:#45607e!important;
+}
+html[data-theme="dark"] .content .sicoob-stat,
+html[data-theme="dark"] .content .summary .stat,
+html[data-theme="dark"] .content .summary .sicoob-stat {
+  background:#1a2940!important;
+  border-color:#354a67!important;
+  color:#eaf1fc!important;
+}
+html[data-theme="dark"] .content .summary .stat strong,
+html[data-theme="dark"] .content .summary .sicoob-stat strong,
+html[data-theme="dark"] .content .summary .stat small,
+html[data-theme="dark"] .content .summary .sicoob-stat small {
+  color:#eef4ff!important;
+}
+html[data-theme="dark"] .content .summary .stat .muted,
+html[data-theme="dark"] .content .summary .sicoob-stat .muted {
+  color:#adc0db!important;
+}
+html[data-theme="dark"] .content .page-heading p,
+html[data-theme="dark"] .content .page-heading .muted,
+html[data-theme="dark"] .content .search-wrap label {
+  color:#c5d6ec!important;
+}
+/* Mantém os campos legíveis também nos modais, sem interferir nos eventos. */
+html[data-theme="dark"] dialog {
+  background:#1b2940!important;
+  color:#edf3ff!important;
+  border-color:#3a506d!important;
+}
+html[data-theme="dark"] dialog input,
+html[data-theme="dark"] dialog textarea,
+html[data-theme="dark"] dialog select {
+  background:#112039!important;
+  color:#eef5ff!important;
+  border-color:#435b7b!important;
+}
