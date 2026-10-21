@@ -17,6 +17,36 @@ const missing=p=>(p.required_documents||[]).filter(t=>!docs(p).some(d=>d.documen
 function reset(){HSN_PUSH.reset();HSN_PHASE5.reset();HSN_PHASE4.reset();HSN_DOCUMENT_READING.reset();HSN_ATTACHMENTS.reset();HSN_PHASE3.reset();version++;data={payables:[],models:[],suppliers:[],types:[],holidays:[],documents:[]};selected=null;editingRecord=null;pendingUpload=null;preview=[];document.getElementById('summary')?.replaceChildren();document.getElementById('calendar-board')?.replaceChildren();document.getElementById('finance-controls')?.replaceChildren();for(const id of ['finance-dialog','documents-dialog','preview-dialog'])document.getElementById(id)?.close();document.getElementById('finance-fields')?.replaceChildren();document.getElementById('document-list')?.replaceChildren();document.getElementById('preview-list')?.replaceChildren();}
 async function all(table,order='created_at'){let result=[];for(let offset=0;;offset+=1000){const batch=check(await db.from(table).select('*').order(order).order('id').range(offset,offset+999));result.push(...batch);if(batch.length<1000)break;}return result;}
 async function loadFinance(v){if(!user)return;kind=v;const token=++version;month ||= D().today().slice(0,7);$('records').replaceChildren(el('p','Carregando seu financeiro…'));try{requireOnline();const results=await Promise.all([all('payables'),all('recurring_models'),all('suppliers'),all('account_types'),all('local_holidays'),all('payable_documents'),all('message_templates'),...HSN_PHASE3.requests(all),...HSN_PHASE4.requests(all),...HSN_PHASE5.requests(all),...HSN_PUSH.requests(all)]);if(token!==version||view!==v||!user)return;[data.payables,data.models,data.suppliers,data.types,data.holidays,data.documents,templates]=results;HSN_PHASE3.receive(data,results.slice(7,11));HSN_PHASE4.receive(data,results[11]);HSN_PHASE5.receive(data,results.slice(12,13));HSN_PUSH.receive(results.slice(13));renderFinance();if(selected)renderDocuments();HSN_PHASE3.showDailySummary();}catch(e){if(token!==version||view!==v)return;data.payables=[];$('records').replaceChildren(el('p','Não foi possível consultar. Confira fase-6-push.sql e a conexão.'));failure(e);}}
+
+function supplierPicker(container,suppliers,value=''){
+ const wrap=el('div',undefined,'hsn-supplier-picker');
+ const search=el('input');search.type='search';search.placeholder='Pesquisar por nome ou CNPJ';search.autocomplete='off';search.setAttribute('aria-label','Pesquisar fornecedor');
+ const label=el('label','Fornecedor cadastrado');const sel=el('select');sel.name='supplier_id';sel.required=true;
+ const sorted=[...suppliers].sort((a,b)=>(a.trade_name||a.legal_name).localeCompare(b.trade_name||b.legal_name,'pt-BR'));
+ function fill(){const q=HSN_IMPORT_RULES.normalize(search.value),digits=search.value.replace(/\D/g,'');
+  const previous=sel.value||value;sel.replaceChildren(new Option('Selecione o fornecedor',''));
+  const found=sorted.filter(s=>!q||HSN_IMPORT_RULES.normalize([s.legal_name,s.trade_name,s.tax_id].join(' ')).includes(q)||(digits.length>=3&&String(s.tax_id||'').replace(/\D/g,'').includes(digits)));
+  for(const s of found)sel.append(new Option((s.trade_name||s.legal_name)+(s.tax_id?' · '+s.tax_id:''),s.id));
+  if(found.some(s=>s.id===previous))sel.value=previous;else sel.value='';
+ }
+ search.addEventListener('input',fill);fill();if(value)sel.value=value;
+ label.append(sel);wrap.append(search,label);container.append(wrap);return sel;
+}
+function openFinanceRegistration(module){if(busy)return;$('finance-dialog').close();view=module;$('search').value='';load();}
+async function createTypeInAccount(select){
+ if(busy)return;const name=prompt('Nome do novo tipo de conta (ex.: Energia elétrica):');if(name===null)return;
+ const clean=name.trim();if(!clean){notice('Informe o nome do tipo de conta.',true);return;}if(clean.length>80){notice('O nome pode ter até 80 caracteres.',true);return;}
+ const present=data.types.find(t=>HSN_IMPORT_RULES.normalize(t.name)===HSN_IMPORT_RULES.normalize(clean));
+ if(present){select.value=present.id;notice('Tipo já cadastrado. Ele foi selecionado.');return;}
+ await operation(async()=>{
+  const fresh=check(await db.from('account_types').select('*').eq('owner_id',user.id));
+  const duplicate=fresh.find(t=>HSN_IMPORT_RULES.normalize(t.name)===HSN_IMPORT_RULES.normalize(clean));
+  if(duplicate){data.types=fresh;select.replaceChildren(...fresh.map(t=>new Option(t.name,t.id)));select.value=duplicate.id;notice('Tipo já existente. Selecionado.');return;}
+  const made=check(await db.from('account_types').insert({owner_id:user.id,name:clean,color:'#f97316'}).select('*'));
+  if(made.length!==1)throw Error('Não foi possível confirmar a criação do tipo.');
+  data.types.push(made[0]);select.append(new Option(made[0].name,made[0].id));select.value=made[0].id;notice('Tipo "'+clean+'" cadastrado e selecionado.');
+ });
+}
 function selectField(container,key,title,options,value='',required=false){const label=el('label',title),select=el('select');select.name=key;select.required=required;options.forEach(([val,text,disabled])=>{const option=new Option(text,val);option.disabled=!!disabled;select.append(option);});select.value=value;label.append(select);container.append(label);return select;}
 function inputField(container,key,title,value='',type='text',required=false){return field(container,key,title,value,type,required);}
 function hint(container,text){container.append(el('p',text,'hint'));}
@@ -25,6 +55,7 @@ function filterControls(){const controls=$('finance-controls');controls.replaceC
  const m=inputField(controls,'filter_month','Competência / mês',month,'month',true);m.onchange=()=>{if(m.value){month=m.value;renderFinance();}};
  const st=selectField(controls,'filter_status','Situação',[['','Todas'],...Object.entries(labels).map(([k,v])=>[k,v])],statusFilter);st.onchange=()=>{statusFilter=st.value;renderFinance();};
  const ty=selectField(controls,'filter_type','Tipo',[['','Todos os tipos'],...data.types.map(t=>[t.id,t.name])],typeFilter);ty.onchange=()=>{typeFilter=ty.value;renderFinance();};
+ if(kind==='payables'){controls.append(button('Fornecedores',()=>openFinanceRegistration('suppliers')));controls.append(button('Gerenciar tipos',()=>openFinanceRegistration('account_types')));}
  if(kind==='calendar'){
  const mode=selectField(controls,'calendar_mode','Visualização',[['month','Mês'],['list','Lista']],calendarMode);mode.onchange=()=>{calendarMode=mode.value;renderFinance();};
  const moduleSelect=selectField(controls,'module','Módulo',HSN_PHASE3.calendarOptions(),HSN_PHASE3.getCalendarModule());moduleSelect.onchange=()=>HSN_PHASE3.setCalendarModule(moduleSelect.value);
@@ -67,10 +98,11 @@ function renderCalendar(list){const board=$('calendar-board'),h=D().holidays(Num
 function editor(record=null){if(busy)return;if(HSN_PHASE4.handles(kind))return HSN_PHASE4.editor(record);if(HSN_PHASE3.handles(kind))return HSN_PHASE3.editor(record);editingTable=kind==='calendar'?'payables':kind;editingRecord=record;$('finance-form').dataset.table=editingTable;$('finance-title').textContent=(record?'Editar · ':'Novo · ')+titles[editingTable];const container=$('finance-fields');container.replaceChildren();const grid=el('div',undefined,'grid');container.append(grid);
  if(editingTable==='local_holidays'){inputField(grid,'name','Nome',record?.name||'','text',true);inputField(grid,'holiday_date','Data',record?.holiday_date||D().today(),'date',true);selectField(grid,'annually','Repetição',[['false','Somente neste ano'],['true','Todo ano']],String(record?.annually||false));selectField(grid,'scope','Abrangência',[['municipal','Municipal'],['estadual','Estadual']],record?.scope||'municipal');}
  else{
- if(!data.suppliers.length||!data.types.length){notice('Cadastre pelo menos um fornecedor e um tipo antes de criar uma conta.',true);return;}
+ if(!data.suppliers.length){notice('Cadastre um fornecedor antes de criar uma conta. Os beneficiários do DDA podem ser captados pelo botão no módulo DDA.',true);return;}
  inputField(grid,'title','Descrição da conta',record?.title||'','text',true);
- selectField(grid,'supplier_id','Fornecedor',data.suppliers.map(s=>[s.id,s.trade_name||s.legal_name]),record?.supplier_id||data.suppliers[0].id,true);
- selectField(grid,'type_id','Tipo de conta',data.types.map(t=>[t.id,t.name]),record?.type_id||data.types[0].id,true);
+ supplierPicker(grid,data.suppliers,record?.supplier_id||'');
+ const types=selectField(grid,'type_id','Tipo de conta',[['','Selecione o tipo'],...data.types.map(t=>[t.id,t.name])],record?.type_id||'',true);
+ const typeControls=el('div',undefined,'hsn-account-type-actions');typeControls.append(button('+ Criar tipo de conta',()=>createTypeInAccount(types),'secondary'));grid.append(typeControls);
  const estimated=inputField(grid,'estimated_amount','Valor estimado (R$)',record?.estimated_amount??0,'number',true);estimated.min='0';estimated.step='.01';
  selectField(grid,'due_rule','Fim de semana / feriado',[['keep','Manter vencimento'],['before','Antecipar para dia útil'],['after','Adiar para dia útil']],record?.due_rule||'keep',true);
  if(editingTable==='recurring_models'){
