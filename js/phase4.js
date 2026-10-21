@@ -5,18 +5,131 @@ const R=()=>HSN_IMPORT_RULES,D=()=>HSN_DATES;
 const money=n=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n||0));
 const state=c=>c.converted_payable_id?'converted':c.reviewed?'checked':'unchecked';
 const stateNames={unchecked:'Não conferida',checked:'Conferida',converted:'Convertida em conta'};
+// Seleção em lote restrita aos boletos visíveis na tela DDA.
+const selectedDdaIds=new Set();
+let lastDdaView=false;
 const handles=v=>['dda','imports','reports'].includes(v);
 function requests(all){return [all('dda_charges')];}
-function receive(snapshot,rows){data=snapshot;dda=rows||[];ddaMonth ||= D().today().slice(0,7);reportStart ||= D().today().slice(0,7)+'-01';reportEnd ||= D().monthDay(reportStart.slice(0,7),31);}
-function reset(){data=null;dda=[];importRows=[];workbook=null;editing=null;for(const id of ['phase4-dialog','import-dialog'])document.getElementById(id)?.close();document.getElementById('phase4-fields')?.replaceChildren();document.getElementById('import-review')?.replaceChildren();}
+function receive(snapshot,rows){data=snapshot;dda=rows||[];const available=new Set(dda.map(c=>c.id));for(const id of selectedDdaIds)if(!available.has(id))selectedDdaIds.delete(id);ddaMonth ||= D().today().slice(0,7);reportStart ||= D().today().slice(0,7)+'-01';reportEnd ||= D().monthDay(reportStart.slice(0,7),31);}
+function reset(){data=null;dda=[];selectedDdaIds.clear();lastDdaView=false;importRows=[];workbook=null;editing=null;for(const id of ['phase4-dialog','import-dialog'])document.getElementById(id)?.close();document.getElementById('phase4-fields')?.replaceChildren();document.getElementById('import-review')?.replaceChildren();}
 function field4(c,key,title,value='',type='text',required=false){return field(c,key,title,value,type,required);}
 function select4(c,key,title,options,value='',required=false){const label=el('label',title),select=el('select');select.name=key;select.required=required;options.forEach(([v,t])=>select.append(new Option(t,v)));select.value=value;label.append(select);c.append(label);return select;}
 function supplierOf(p){return data.suppliers.find(s=>s.id===p.supplier_id);}
 function existing(){return [...data.payables.map(p=>({...p,module:'Contas'})),...dda.map(c=>({...c,module:'DDA'}))];}
-function render(){if(!data)return;HSN_FINANCE.activate(view);kind=view;HSN_THEME.describe(view);$('view-title').textContent=titles[view];$('new').hidden=view!=='dda';$('new').textContent='Nova cobrança DDA';$('records').replaceChildren();$('summary').replaceChildren();$('finance-controls').replaceChildren();$('calendar-board').replaceChildren();HSN_PHASE3.clearCalendar();document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));if(view==='dda')renderDda();else if(view==='imports')renderImports();else renderReports();}
+function render(){if(!data)return;if(view!=='dda'&&lastDdaView)selectedDdaIds.clear();lastDdaView=view==='dda';HSN_FINANCE.activate(view);kind=view;HSN_THEME.describe(view);$('view-title').textContent=titles[view];$('new').hidden=view!=='dda';$('new').textContent='Nova cobrança DDA';$('records').replaceChildren();$('summary').replaceChildren();$('finance-controls').replaceChildren();$('calendar-board').replaceChildren();HSN_PHASE3.clearCalendar();document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));if(view==='dda')renderDda();else if(view==='imports')renderImports();else renderReports();}
 function editor(record=null){if(view==='dda')openDda(record);}
-function ddaCard(c){const card=el('article',undefined,'record dda-card');card.append(el('span','DDA','pill dda-pill'),el('span',stateNames[state(c)],'pill dda-pill'),el('h2',c.title),el('p',c.supplier_name+(c.tax_id?' · '+c.tax_id:'')),el('p','Vencimento '+D().br(c.due_date)),el('div',money(c.amount),'money'));const actions=el('div',undefined,'actions');if(!c.converted_payable_id){actions.append(button('Editar',()=>openDda(c)));if(!c.reviewed)actions.append(button('Conferir',()=>reviewDda(c),'dda-button'));if(c.reviewed)actions.append(button('Converter em conta',()=>convertForm(c),'dda-button'));}else actions.append(button('Ver conta vinculada',()=>{const account=data.payables.find(p=>p.id===c.converted_payable_id);if(!account){notice('Atualize a lista para encontrar a conta vinculada.',true);return;}view='payables';HSN_FINANCE.activate(view,account.competence.slice(0,7));HSN_FINANCE.render();HSN_FINANCE.editor(account);}));actions.append(button(c.archived?'Restaurar':'Arquivar',()=>archiveDda(c),'danger'));card.append(actions);return card;}
-function renderDda(){const controls=$('finance-controls');const month=field4(controls,'dda_month','Mês do vencimento',ddaMonth,'month',true);month.onchange=()=>{if(month.value){ddaMonth=month.value;render();}};const status=select4(controls,'dda_state','Conferência',[['','Todas'],...Object.entries(stateNames)],ddaStatus);status.onchange=()=>{ddaStatus=status.value;render();};const archived=select4(controls,'dda_archived','Exibição',[['active','Ativas'],['archived','Arquivadas']],archiveFilter?'archived':'active');archived.onchange=()=>{archiveFilter=archived.value==='archived';render();};controls.append(button('Importar DDA',()=>{view='imports';importModule='dda';render();}));const term=$('search').value.toLocaleLowerCase('pt-BR');const list=dda.filter(c=>c.archived===archiveFilter&&c.due_date.slice(0,7)===ddaMonth&&(!ddaStatus||state(c)===ddaStatus)&&[c.title,c.supplier_name,c.tax_id,c.document_number].join(' ').toLocaleLowerCase('pt-BR').includes(term));const info=el('section',undefined,'card full-width dda-card');info.append(el('h3','DDA · cobranças para conferir'),el('p','Não conferidas: '+list.filter(c=>!c.reviewed).length+' · Conferidas: '+list.filter(c=>c.reviewed&&!c.converted_payable_id).length+' · Convertidas: '+list.filter(c=>c.converted_payable_id).length),el('p','DDA não é pagamento. Cobranças convertidas mantêm a origem e têm uma conta vinculada; nunca entram duas vezes nos totais de contas.','muted'));$('records').append(info);list.forEach(c=>$('records').append(ddaCard(c)));if(!list.length)$('records').append(el('p','Nenhuma cobrança neste mês e filtro.'));}
+function ddaCard(c,selectable=false){
+ const card=el('article',undefined,'record dda-card');
+ if(selectable){
+  card.classList.add('dda-selectable');card.dataset.ddaId=c.id;
+  const pick=el('label',undefined,'dda-card-select');
+  const checkBox=el('input');checkBox.type='checkbox';checkBox.checked=selectedDdaIds.has(c.id);
+  checkBox.setAttribute('aria-label','Selecionar cobrança '+c.title);
+  checkBox.onchange=()=>{if(checkBox.checked)selectedDdaIds.add(c.id);else selectedDdaIds.delete(c.id);updateDdaSelectionUi();};
+  pick.append(checkBox,el('span','Selecionar'));card.append(pick);
+  card.classList.toggle('dda-selected',checkBox.checked);
+ }
+ card.append(el('span','DDA','pill dda-pill'),el('span',stateNames[state(c)],'pill dda-pill'),el('h2',c.title),el('p',c.supplier_name+(c.tax_id?' · '+c.tax_id:'')),el('p','Vencimento '+D().br(c.due_date)),el('div',money(c.amount),'money'));
+ const actions=el('div',undefined,'actions');
+ if(!c.converted_payable_id){actions.append(button('Editar',()=>openDda(c)));if(!c.reviewed)actions.append(button('Conferir',()=>reviewDda(c),'dda-button'));if(c.reviewed)actions.append(button('Converter em conta',()=>convertForm(c),'dda-button'));}
+ else actions.append(button('Ver conta vinculada',()=>{const account=data.payables.find(p=>p.id===c.converted_payable_id);if(!account){notice('Atualize a lista para encontrar a conta vinculada.',true);return;}view='payables';HSN_FINANCE.activate(view,account.competence.slice(0,7));HSN_FINANCE.render();HSN_FINANCE.editor(account);}));
+ actions.append(button(c.archived?'Restaurar':'Arquivar',()=>archiveDda(c),'danger'));card.append(actions);
+ return card;
+}
+function visibleDdaRows(){
+ const term=$('search').value.toLocaleLowerCase('pt-BR');
+ return dda.filter(c=>c.archived===archiveFilter&&c.due_date.slice(0,7)===ddaMonth&&(!ddaStatus||state(c)===ddaStatus)&&[c.title,c.supplier_name,c.tax_id,c.document_number].join(' ').toLocaleLowerCase('pt-BR').includes(term));
+}
+function selectedVisibleDda(){return visibleDdaRows().filter(c=>selectedDdaIds.has(c.id));}
+function updateDdaSelectionUi(){
+ const rows=visibleDdaRows(),picked=selectedVisibleDda(),count=picked.length;
+ const countNode=document.getElementById('dda-selection-summary');
+ if(countNode)countNode.textContent=count+' selecionada(s) de '+rows.length+' · '+money(picked.reduce((sum,c)=>sum+Number(c.amount||0),0));
+ const selectAll=document.getElementById('dda-select-all');
+ if(selectAll){selectAll.checked=rows.length>0&&count===rows.length;selectAll.indeterminate=count>0&&count<rows.length;selectAll.disabled=!rows.length;}
+ for(const [id,disabled] of [['dda-batch-review',!picked.some(c=>!c.archived&&!c.reviewed&&!c.converted_payable_id)],['dda-batch-archive',!picked.some(c=>!c.archived)],['dda-batch-restore',!picked.some(c=>c.archived)],['dda-batch-export',!count],['dda-batch-clear',!count]]){
+  const target=document.getElementById(id);if(target)target.disabled=disabled;
+ }
+ for(const card of document.querySelectorAll('#records .dda-selectable')){
+  const selected=selectedDdaIds.has(card.dataset.ddaId);
+  card.classList.toggle('dda-selected',selected);
+  const input=card.querySelector('.dda-card-select input');if(input)input.checked=selected;
+ }
+}
+function batchButton(text,id,handler,cls='secondary'){
+ const target=button(text,handler,cls);target.id=id;return target;
+}
+function ddaSelectionToolbar(list){
+ const section=el('section',undefined,'dda-batch-toolbar full-width');
+ const upper=el('div',undefined,'dda-batch-heading');
+ const label=el('label',undefined,'dda-batch-select-all');
+ const checkBox=el('input');checkBox.type='checkbox';checkBox.id='dda-select-all';
+ checkBox.onchange=()=>{for(const c of list){if(checkBox.checked)selectedDdaIds.add(c.id);else selectedDdaIds.delete(c.id);}updateDdaSelectionUi();};
+ label.append(checkBox,el('span','Selecionar todos os boletos exibidos'));
+ const summary=el('strong',undefined,'dda-batch-count');summary.id='dda-selection-summary';summary.setAttribute('aria-live','polite');
+ upper.append(label,summary);section.append(upper);
+ const actions=el('div',undefined,'dda-batch-actions');
+ actions.append(
+  batchButton('Conferir selecionados','dda-batch-review',()=>runDdaBatch('review'),'dda-button'),
+  batchButton('Arquivar','dda-batch-archive',()=>runDdaBatch('archive')),
+  batchButton('Restaurar','dda-batch-restore',()=>runDdaBatch('restore')),
+  batchButton('Exportar Excel','dda-batch-export',exportSelectedDda),
+  batchButton('Limpar seleção','dda-batch-clear',()=>{selectedDdaIds.clear();updateDdaSelectionUi();})
+ );
+ section.append(actions,el('p','As ações só afetam os títulos marcados. Conferir não significa pagar. Converter em conta permanece individual, com conferência de fornecedor e categoria.','dda-batch-help'));
+ return section;
+}
+function renderDda(){
+ const controls=$('finance-controls');
+ const month=field4(controls,'dda_month','Mês do vencimento',ddaMonth,'month',true);
+ month.onchange=()=>{if(month.value){selectedDdaIds.clear();ddaMonth=month.value;render();}};
+ const status=select4(controls,'dda_state','Conferência',[['','Todas'],...Object.entries(stateNames)],ddaStatus);
+ status.onchange=()=>{selectedDdaIds.clear();ddaStatus=status.value;render();};
+ const archived=select4(controls,'dda_archived','Exibição',[['active','Ativas'],['archived','Arquivadas']],archiveFilter?'archived':'active');
+ archived.onchange=()=>{selectedDdaIds.clear();archiveFilter=archived.value==='archived';render();};
+ controls.append(button('Importar DDA',()=>{selectedDdaIds.clear();view='imports';importModule='dda';render();}));
+ const list=visibleDdaRows();
+ const info=el('section',undefined,'card full-width dda-card');
+ info.append(el('h3','DDA · cobranças para conferir'),el('p','Não conferidas: '+list.filter(c=>!c.reviewed).length+' · Conferidas: '+list.filter(c=>c.reviewed&&!c.converted_payable_id).length+' · Convertidas: '+list.filter(c=>c.converted_payable_id).length),el('p','DDA não é pagamento. Cobranças convertidas mantêm a origem e têm uma conta vinculada; nunca entram duas vezes nos totais de contas.','muted'));
+ $('records').append(info,ddaSelectionToolbar(list));
+ list.forEach(c=>$('records').append(ddaCard(c,true)));
+ if(!list.length)$('records').append(el('p','Nenhuma cobrança neste mês e filtro.'));
+ updateDdaSelectionUi();
+}
+async function runDdaBatch(action){
+ if(busy)return;
+ const chosen=selectedVisibleDda();
+ const eligible=chosen.filter(c=>action==='review'?!c.archived&&!c.reviewed&&!c.converted_payable_id:action==='archive'?!c.archived:c.archived);
+ if(!eligible.length){notice('Não há boletos elegíveis para esta ação nos selecionados.',true);return;}
+ const ignored=chosen.length-eligible.length;
+ const label={review:'conferir',archive:'arquivar',restore:'restaurar'}[action];
+ const amount=money(eligible.reduce((sum,c)=>sum+Number(c.amount||0),0));
+ const message=action==='review'
+  ?'Você verificou individualmente o fornecedor, valor, vencimento e documento de todos os '+eligible.length+' boletos? Confirmar a conferência em lote ('+amount+')? Isso NÃO registra pagamentos nem cria contas.'
+  :'Deseja '+label+' '+eligible.length+' boleto(s), no total de '+amount+'? '+(action==='archive'?'A conta vinculada não será modificada.':'A restauração não registra pagamentos.');
+ if(!confirm(message+(ignored?'\n'+ignored+' selecionado(s) serão ignorados porque já estão nesta situação.':'')))return;
+ await operation(async()=>{
+  let done=0;const errors=[];
+  for(const c of eligible){
+   try{const payload=action==='review'?{reviewed:true,reviewed_date:D().today()}:{archived:action==='archive'};
+    await persist('dda_charges',c,payload);done++;selectedDdaIds.delete(c.id);
+   }catch(e){errors.push((c.document_number||c.title)+': '+(e?.message||'Falha'));}
+  }
+  await HSN_FINANCE.load(view);
+  notice(done+' boleto(s) atualizado(s).'+(errors.length?' '+errors.length+' falha(s); confira e tente novamente:\n'+errors.slice(0,5).join('\n'):'')+(action==='review'?' Nenhum pagamento registrado.':''),errors.length>0);
+ });
+}
+async function exportSelectedDda(){
+ const chosen=selectedVisibleDda();
+ if(!chosen.length){notice('Selecione ao menos um boleto DDA.',true);return;}
+ try{
+  await library('xlsx');
+  const sheet=XLSX.utils.json_to_sheet(exportData(chosen,'dda'));
+  sheet['!cols']=Array.from({length:16},()=>({wch:25}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,sheet,'DDA selecionados');
+  XLSX.writeFile(wb,'HSN-DDA-Selecionados-'+D().today()+'.xlsx');
+ }catch(e){failure(e);}
+}
 function openForm(title,mode,c=null){if(busy)return false;editing=c;formMode=mode;$('phase4-title').textContent=title;$('phase4-fields').replaceChildren();$('phase4-submit').textContent=mode==='convert'?'Confirmar conversão':'Salvar no Supabase';return true;}
 function openDda(c=null){if(c?.converted_payable_id){notice('Edite a conta vinculada; o DDA convertido preserva a origem.');return;}if(!openForm(c?'Editar cobrança DDA':'Nova cobrança DDA','dda',c))return;const box=$('phase4-fields'),grid=el('div',undefined,'grid');box.append(grid);field4(grid,'title','Descrição',c?.title||'','text',true);field4(grid,'supplier_name','Fornecedor / beneficiário',c?.supplier_name||'','text',true);field4(grid,'tax_id','CNPJ / CPF',c?.tax_id||'');field4(grid,'due_date','Vencimento',c?.due_date||D().today(),'date',true);const amount=field4(grid,'amount','Valor (R$)',c?.amount??0,'number',true);amount.min='0';amount.step='.01';field4(grid,'document_number','Número do documento',c?.document_number||'');field4(box,'barcode','Linha digitável / código de barras',c?.barcode||'').maxLength=100;field4(box,'notes','Observações',c?.notes||'','textarea');box.append(el('p','Inclusão e edição exigem sua revisão. Salvar edição financeira reabre a conferência antes de converter.','hint'));$('phase4-dialog').showModal();}
 async function persist(table,c,payload){const rows=check(await(c?db.from(table).update(payload).eq('id',c.id).eq('updated_at',c.updated_at):db.from(table).insert({...payload,owner_id:user.id})).select('id'));if(rows.length!==1)throw Error('Registro mudou em outro aparelho. Atualize e confira.');return rows[0].id;}
