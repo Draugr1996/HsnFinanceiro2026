@@ -1,0 +1,30 @@
+FINANCEIRO HSN 8.0 — REFORMULAÇÃO VISUAL
+======================================
+
+Esta é uma versão PARA TESTES, baseada no Financeiro HSN 7.1 + correção de contraste 7.2.
+
+INSTALAÇÃO SEGURA
+1. Guarde o backup do aplicativo principal.
+2. Use o repositório de teste, nunca o de produção antes da aprovação.
+3. Extraia o ZIP e envie os ARQUIVOS INTERNOS da pasta HsnFinanceiro-main
+   para a raiz do repositório de teste (index.html fica na raiz).
+4. Espere a publicação do GitHub Pages e use Ctrl+Shift+R.
+5. Entre no app e confira Sicoob, menu, alternância de tema, formulários e modais.
+
+ARQUIVOS DE APRESENTAÇÃO ATIVOS
+- css/style.css (base original, preservada)
+- css/layout.css (base original, preservada)
+- css/hsn8-interface.css (nova interface)
+- js/hsn8-shell.js (ícones, trilha de navegação e detalhes visuais)
+
+ARQUIVOS COM PEQUENAS ALTERAÇÕES DE INTERFACE
+- index.html: reorganização do cabeçalho, título, menu e apresentação.
+- js/theme.js: tema escuro como padrão apenas na ausência de preferência.
+- service-worker.js: versão atualizada do cache para reconhecer novos arquivos.
+
+Os scripts financeiros, importação, cobranças, verificação, histórico e envio Zoho
+foram mantidos conforme estavam no projeto recebido. O sistema continua a usar
+seus próprios dados no Supabase. Nenhum registro demonstrativo é incluído no ZIP.
+
+IMPORTANTE: os testes feitos até o momento foram VISUAIS e de navegação, sem
+acesso à sua sessão real do Supabase ou envio de e-mails.
