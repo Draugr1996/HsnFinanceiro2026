@@ -3,15 +3,16 @@
 let data=null,dda=[],kind='dda',ddaMonth='',ddaStatus='',archiveFilter=false,editing=null,formMode='',importRows=[],importModule='payables',importFile='',workbook=null,reportStart='',reportEnd='',reportType='',reportSupplier='',reportStatus='',reportModule='payables';
 const R=()=>HSN_IMPORT_RULES,D=()=>HSN_DATES;
 const money=n=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n||0));
-const state=c=>c.converted_payable_id?'converted':c.reviewed?'checked':'unchecked';
-const stateNames={unchecked:'Não conferida',checked:'Conferida',converted:'Convertida em conta'};
+const linkedAccount=c=>data?.payables?.find(p=>p.id===c.converted_payable_id);
+const state=c=>c.converted_payable_id?(linkedAccount(c)?.payment_status==='paid'?'paid':'converted'):c.reviewed?'checked':'unchecked';
+const stateNames={unchecked:'Não conferida',checked:'Conferida',converted:'Convertida em conta',paid:'Paga (conta vinculada)'};
 // Seleção em lote restrita aos boletos visíveis na tela DDA.
 const selectedDdaIds=new Set();
 let lastDdaView=false;
 const handles=v=>['dda','imports','reports'].includes(v);
 function requests(all){return [all('dda_charges')];}
 function receive(snapshot,rows){data=snapshot;dda=rows||[];const available=new Set(dda.map(c=>c.id));for(const id of selectedDdaIds)if(!available.has(id))selectedDdaIds.delete(id);ddaMonth ||= D().today().slice(0,7);reportStart ||= D().today().slice(0,7)+'-01';reportEnd ||= D().monthDay(reportStart.slice(0,7),31);}
-function reset(){data=null;dda=[];selectedDdaIds.clear();lastDdaView=false;importRows=[];workbook=null;editing=null;for(const id of ['phase4-dialog','import-dialog'])document.getElementById(id)?.close();document.getElementById('phase4-fields')?.replaceChildren();document.getElementById('import-review')?.replaceChildren();}
+function reset(){data=null;dda=[];selectedDdaIds.clear();lastDdaView=false;importRows=[];workbook=null;editing=null;for(const id of ['phase4-dialog','import-dialog','dda-batch-dialog'])document.getElementById(id)?.close();document.getElementById('phase4-fields')?.replaceChildren();document.getElementById('import-review')?.replaceChildren();}
 function field4(c,key,title,value='',type='text',required=false){return field(c,key,title,value,type,required);}
 function select4(c,key,title,options,value='',required=false){const label=el('label',title),select=el('select');select.name=key;select.required=required;options.forEach(([v,t])=>select.append(new Option(t,v)));select.value=value;label.append(select);c.append(label);return select;}
 function supplierOf(p){return data.suppliers.find(s=>s.id===p.supplier_id);}
@@ -47,7 +48,7 @@ function updateDdaSelectionUi(){
  if(countNode)countNode.textContent=count+' selecionada(s) de '+rows.length+' · '+money(picked.reduce((sum,c)=>sum+Number(c.amount||0),0));
  const selectAll=document.getElementById('dda-select-all');
  if(selectAll){selectAll.checked=rows.length>0&&count===rows.length;selectAll.indeterminate=count>0&&count<rows.length;selectAll.disabled=!rows.length;}
- for(const [id,disabled] of [['dda-batch-review',!picked.some(c=>!c.archived&&!c.reviewed&&!c.converted_payable_id)],['dda-batch-archive',!picked.some(c=>!c.archived)],['dda-batch-restore',!picked.some(c=>c.archived)],['dda-batch-export',!count],['dda-batch-clear',!count]]){
+ for(const [id,disabled] of [['dda-batch-review',!picked.some(c=>!c.archived&&!c.reviewed&&!c.converted_payable_id)],['dda-batch-convert',!picked.some(c=>!c.archived&&c.reviewed&&!c.converted_payable_id)],['dda-batch-paid',!picked.some(c=>!c.archived&&c.converted_payable_id&&linkedAccount(c)?.payment_status!=='paid')],['dda-batch-archive',!picked.some(c=>!c.archived)],['dda-batch-restore',!picked.some(c=>c.archived)],['dda-batch-export',!count],['dda-batch-clear',!count]]){
   const target=document.getElementById(id);if(target)target.disabled=disabled;
  }
  for(const card of document.querySelectorAll('#records .dda-selectable')){
@@ -71,12 +72,14 @@ function ddaSelectionToolbar(list){
  const actions=el('div',undefined,'dda-batch-actions');
  actions.append(
   batchButton('Conferir selecionados','dda-batch-review',()=>runDdaBatch('review'),'dda-button'),
+  batchButton('Converter em contas','dda-batch-convert',openBatchConvert,'dda-button'),
+  batchButton('Marcar como pagas','dda-batch-paid',openBatchPaid,'dda-button'),
   batchButton('Arquivar','dda-batch-archive',()=>runDdaBatch('archive')),
   batchButton('Restaurar','dda-batch-restore',()=>runDdaBatch('restore')),
   batchButton('Exportar Excel','dda-batch-export',exportSelectedDda),
   batchButton('Limpar seleção','dda-batch-clear',()=>{selectedDdaIds.clear();updateDdaSelectionUi();})
  );
- section.append(actions,el('p','As ações só afetam os títulos marcados. Conferir não significa pagar. Converter em conta permanece individual, com conferência de fornecedor e categoria.','dda-batch-help'));
+ section.append(actions,el('p','As ações só afetam os títulos marcados. Conversão exige conferir fornecedor e categoria de cada título. A baixa de pagamento exige comprovante e valor real em cada conta vinculada.','dda-batch-help'));
  return section;
 }
 function renderDda(){
@@ -90,11 +93,180 @@ function renderDda(){
  controls.append(button('Importar DDA',()=>{selectedDdaIds.clear();view='imports';importModule='dda';render();}));
  const list=visibleDdaRows();
  const info=el('section',undefined,'card full-width dda-card');
- info.append(el('h3','DDA · cobranças para conferir'),el('p','Não conferidas: '+list.filter(c=>!c.reviewed).length+' · Conferidas: '+list.filter(c=>c.reviewed&&!c.converted_payable_id).length+' · Convertidas: '+list.filter(c=>c.converted_payable_id).length),el('p','DDA não é pagamento. Cobranças convertidas mantêm a origem e têm uma conta vinculada; nunca entram duas vezes nos totais de contas.','muted'));
+ info.append(el('h3','DDA · cobranças para conferir'),el('p','Não conferidas: '+list.filter(c=>!c.reviewed).length+' · Conferidas: '+list.filter(c=>c.reviewed&&!c.converted_payable_id).length+' · Convertidas: '+list.filter(c=>c.converted_payable_id&&state(c)!=='paid').length+' · Pagas: '+list.filter(c=>state(c)==='paid').length),el('p','DDA não é pagamento. Cobranças convertidas mantêm a origem e têm uma conta vinculada; nunca entram duas vezes nos totais de contas.','muted'));
  $('records').append(info,ddaSelectionToolbar(list));
  list.forEach(c=>$('records').append(ddaCard(c,true)));
  if(!list.length)$('records').append(el('p','Nenhuma cobrança neste mês e filtro.'));
  updateDdaSelectionUi();
+}
+/* Financeiro HSN 8.4 — conversão e confirmação de pagamentos em lote.
+   Nenhum processamento automático: revisão dos dados por título, confirmação explícita,
+   RPC de conversão transacional por item e atualização de pagamento com concorrência otimista. */
+function getDdaBatchDialog(){
+ let dialog=document.getElementById('dda-batch-dialog');
+ if(dialog)return dialog;
+ dialog=el('dialog',undefined,'hsn-dda-batch-dialog');dialog.id='dda-batch-dialog';
+ dialog.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
+ document.body.append(dialog);return dialog;
+}
+function getBatchForm(title,description,submitText){
+ const dialog=getDdaBatchDialog();dialog.replaceChildren();
+ const form=el('form',undefined,'hsn-dda-batch-form');form.method='dialog';
+ const head=el('header',undefined,'hsn-batch-title');
+ const top=el('div');top.append(el('h2',title),el('p',description,'muted'));
+ const close=button('Fechar',()=>{if(!busy)dialog.close();},'secondary');close.setAttribute('aria-label','Fechar ações em lote');
+ head.append(top,close);form.append(head);
+ const content=el('div',undefined,'hsn-batch-content');form.append(content);
+ const footer=el('footer',undefined,'hsn-batch-footer');
+ const cancel=button('Cancelar',()=>{if(!busy)dialog.close();},'secondary');
+ const submit=el('button',submitText,'primary');submit.type='submit';footer.append(cancel,submit);form.append(footer);
+ dialog.append(form);return {dialog,form,content,submit};
+}
+function batchItemShell(c){
+ const section=el('section',undefined,'hsn-batch-item');section.dataset.ddaBatchId=c.id;
+ const title=el('div',undefined,'hsn-batch-item-title');
+ title.append(el('strong',c.title),el('strong',money(c.amount),'hsn-batch-money'));
+ section.append(title,el('p',(c.supplier_name||'Fornecedor não informado')+' · Documento: '+(c.document_number||'—')+' · Vencimento: '+D().br(c.due_date),'muted'));
+ return section;
+}
+function batchSelect(container,key,label,options,value,required=true){
+ const select=select4(container,key,label,options,value,required);
+ select.dataset.batchField=key;return select;
+}
+function batchDate(container,key,label,value){
+ const input=field4(container,key,label,value,'date',true);input.dataset.batchField=key;return input;
+}
+function batchFieldValue(section,key){return section.querySelector('[data-batch-field="'+key+'"]')?.value||'';}
+function convertEligible(c){return !c.archived&&!c.converted_payable_id&&c.reviewed;}
+function openBatchConvert(){
+ if(busy)return;
+ const chosen=selectedVisibleDda();const eligible=chosen.filter(convertEligible);
+ if(!eligible.length){notice('Selecione boletos conferidos e não convertidos. Use Conferir selecionados antes de converter.',true);return;}
+ if(!data.suppliers.length||!data.types.length){notice('Cadastre fornecedores e tipos de conta antes de converter DDA.',true);return;}
+ const ui=getBatchForm('Converter DDA em contas a pagar',eligible.length+' título(s) aptos. Revise o fornecedor, tipo e competência de cada conta antes de criar os lançamentos.','Criar '+eligible.length+' conta(s)');
+ const total=eligible.reduce((sum,c)=>sum+Number(c.amount||0),0);
+ ui.content.append(el('p',eligible.length+' boleto(s) · '+money(total)+' · '+(chosen.length-eligible.length)+' selecionado(s) não conferido(s) ou já convertido(s) serão ignorados.','hsn-batch-banner'));
+ const bulk=el('section',undefined,'hsn-batch-defaults');
+ bulk.append(el('h3','Preenchimento rápido'));
+ const defType=batchSelect(bulk,'default_type','Tipo para todos',[['','Escolha um tipo'],...data.types.map(t=>[t.id,t.name])],'',false);
+ defType.onchange=()=>ui.content.querySelectorAll('[data-batch-field="type_id"]').forEach(input=>input.value=defType.value);
+ const defRule=batchSelect(bulk,'default_rule','Regra de vencimento para todos',[['keep','Manter'],['before','Antecipar para dia útil'],['after','Adiar para dia útil']],'keep',false);
+ defRule.onchange=()=>ui.content.querySelectorAll('[data-batch-field="due_rule"]').forEach(input=>input.value=defRule.value);
+ bulk.append(el('p','Os campos preenchidos aqui podem ser alterados individualmente abaixo.','muted'));ui.content.append(bulk);
+ for(const c of eligible){
+  const section=batchItemShell(c),grid=el('div',undefined,'hsn-batch-grid');
+  const matches=data.suppliers.filter(s=>c.tax_id&&R().tax(s.tax_id)===R().tax(c.tax_id));
+  const supplierId=c.supplier_id||(matches.length===1?matches[0].id:'');
+  batchSelect(grid,'supplier_id','Fornecedor',[['','Selecione o fornecedor'],...data.suppliers.map(s=>[s.id,s.trade_name||s.legal_name])],supplierId);
+  batchSelect(grid,'type_id','Tipo de conta',[['','Selecione o tipo'],...data.types.map(t=>[t.id,t.name])],'');
+  const compLabel=el('label','Competência');const comp=el('input');comp.type='month';comp.required=true;comp.value=c.due_date.slice(0,7);comp.dataset.batchField='competence';compLabel.append(comp);grid.append(compLabel);
+  batchSelect(grid,'due_rule','Vencimento',[['keep','Manter'],['before','Antecipar para dia útil'],['after','Adiar para dia útil']],'keep');
+  section.append(grid);
+  const candidate={...c,supplier_id:supplierId,original_due_date:c.due_date,actual_amount:c.amount};
+  const duplicates=R().suspects(candidate,data.payables.map(p=>({...p,module:'Contas'})),data.suppliers);
+  if(duplicates.length){
+   const warn=el('div',undefined,'hsn-batch-warning');warn.append(el('strong','Possível conta duplicada'));
+   warn.append(el('p',duplicates.slice(0,3).map(d=>d.record.title+' ('+d.reasons.join(', ')+')').join(' · ')));
+   const label=el('label',undefined,'hsn-batch-confirm');const checkbox=el('input');checkbox.type='checkbox';checkbox.required=true;checkbox.dataset.duplicateConfirmed='1';
+   label.append(checkbox,el('span','Revisei esta possível duplicidade e autorizo a conversão.'));warn.append(label);section.append(warn);
+  }
+  ui.content.append(section);
+ }
+ ui.form.onsubmit=e=>{e.preventDefault();if(!busy)saveBatchConvert(ui.dialog,eligible);};
+ ui.dialog.showModal();
+}
+async function saveBatchConvert(dialog,eligible){
+ const plans=[];
+ try{
+  for(const c of eligible){
+   const item=dialog.querySelector('[data-dda-batch-id="'+c.id+'"]');
+   const supplierId=batchFieldValue(item,'supplier_id'),typeId=batchFieldValue(item,'type_id');
+   if(!data.suppliers.some(s=>s.id===supplierId)||!data.types.some(t=>t.id===typeId))throw Error('Revise fornecedor e tipo de '+c.title+'.');
+   const competence=R().competence(batchFieldValue(item,'competence'));
+   const rule=batchFieldValue(item,'due_rule');
+   if(!['keep','before','after'].includes(rule))throw Error('Regra de vencimento inválida em '+c.title+'.');
+   const due=D().adjust(c.due_date,rule,data.holidays);
+   const confirmDup=item.querySelector('[data-duplicate-confirmed]');
+   if(confirmDup&&!confirmDup.checked)throw Error('Confirme a revisão da possível duplicidade em '+c.title+'.');
+   const candidate={...c,supplier_id:supplierId,original_due_date:c.due_date,actual_amount:c.amount};
+   const duplicates=R().suspects(candidate,data.payables.map(p=>({...p,module:'Contas'})),data.suppliers);
+   if(duplicates.length&&!confirmDup)throw Error('Possível duplicidade detectada em '+c.title+'. Feche e reabra a seleção para revisar.');
+   plans.push({c,supplierId,typeId,competence,rule,due});
+  }
+ }catch(e){failure(e);return;}
+ if(!plans.length)return;
+ if(!confirm('CONFIRMAR CRIAÇÃO DE CONTAS\n\n'+plans.length+' conta(s) a pagar, total de '+money(plans.reduce((s,p)=>s+Number(p.c.amount||0),0))+'.\n\nCada conta será criada separadamente, sem registrar pagamentos. Deseja continuar?'))return;
+ await operation(async()=>{
+  let done=0;const failures=[];
+  for(const {c,supplierId,typeId,competence,rule} of plans){
+   try{
+    // A função no Supabase valida cada conversão e vincula a conta criada ao DDA.
+    check(await db.rpc('convert_dda_to_payable',{p_id:c.id,p_expected_updated_at:c.updated_at,p_supplier_id:supplierId,p_type_id:typeId,p_competence:competence,p_due_rule:rule}));
+    done++;selectedDdaIds.delete(c.id);
+   }catch(e){failures.push((c.document_number||c.title)+': '+(e.message||'Falhou'));}
+  }
+  dialog.close();await HSN_FINANCE.load(view);
+  notice(done+' conta(s) criada(s), sem pagamento. '+(failures.length?failures.length+' falha(s): '+failures.slice(0,4).join(' | '):'Confira em Contas a pagar.'),failures.length>0);
+ });
+}
+function paymentEligibility(c){
+ const p=linkedAccount(c);
+ if(!c.converted_payable_id)return {c,p:null,reason:'Converta este DDA em conta a pagar primeiro.'};
+ if(!p)return {c,p:null,reason:'Conta vinculada não encontrada. Atualize a página.'};
+ if(p.payment_status==='paid')return {c,p,reason:'Conta já está paga.'};
+ if(c.archived||p.archived)return {c,p,reason:'DDA ou conta arquivada.'};
+ if(p.actual_amount===null||p.actual_amount===undefined)return {c,p,reason:'Informe o valor real da conta.'};
+ if(!data.documents.some(d=>d.payable_id===p.id&&d.document_type==='comprovante'))return {c,p,reason:'Anexe o comprovante de pagamento na conta.'};
+ return {c,p,reason:''};
+}
+function openBatchPaid(){
+ if(busy)return;
+ const chosen=selectedVisibleDda();if(!chosen.length)return;
+ const checked=chosen.map(paymentEligibility);const ready=checked.filter(x=>!x.reason);const blocked=checked.filter(x=>x.reason);
+ const ui=getBatchForm('Marcar contas como pagas','Baixa administrativa: somente contas vinculadas ao DDA, com valor real e comprovante anexado. Nenhum pagamento bancário será executado.','Confirmar '+ready.length+' pagamento(s)');
+ ui.content.append(el('p',ready.length+' conta(s) prontas · '+money(ready.reduce((s,x)=>s+Number(x.p.actual_amount),0))+' · '+blocked.length+' impedida(s) de receber baixa.','hsn-batch-banner'));
+ if(blocked.length){
+  const section=el('section',undefined,'hsn-batch-blocked');section.append(el('h3','Precisam de ajuste ('+blocked.length+')'));
+  for(const x of blocked)section.append(el('p',x.c.title+' — '+x.reason));
+  section.append(el('p','Para incluir essas contas, anexe o comprovante ou conclua a conversão individualmente. Depois abra a seleção em lote novamente.','muted'));ui.content.append(section);
+ }
+ for(const {c,p} of ready){
+  const section=batchItemShell(c);section.append(el('p','Conta: '+p.title+' · Valor real: '+money(p.actual_amount)+' · Comprovante anexado','hsn-batch-success'));
+  const row=el('div',undefined,'hsn-batch-grid');batchDate(row,'paid_date','Data efetiva do pagamento',D().today());section.append(row);ui.content.append(section);
+ }
+ if(!ready.length){ui.submit.disabled=true;ui.submit.textContent='Nenhuma conta apta';}
+ else{
+  const consent=el('label',undefined,'hsn-batch-confirm hsn-batch-consent');const input=el('input');input.type='checkbox';input.required=true;input.id='dda-batch-approve-payment';
+  consent.append(input,el('span','Confirmo que estes pagamentos ocorreram, as datas estão corretas e os comprovantes foram anexados às respectivas contas.'));ui.content.append(consent);
+ }
+ ui.form.onsubmit=e=>{e.preventDefault();if(!busy&&ready.length)saveBatchPaid(ui.dialog,ready);};
+ ui.dialog.showModal();
+}
+async function saveBatchPaid(dialog,ready){
+ const approval=dialog.querySelector('#dda-batch-approve-payment');
+ if(!approval?.checked){notice('Confirme o pagamento efetivo antes de baixar as contas.',true);return;}
+ const plans=[];
+ try{
+  for(const {c,p} of ready){
+   const section=dialog.querySelector('[data-dda-batch-id="'+c.id+'"]');
+   const paidDate=batchFieldValue(section,'paid_date');D().parse(paidDate);
+   const fresh=paymentEligibility(c);if(fresh.reason)throw Error(c.title+': '+fresh.reason);
+   plans.push({c,p,date:paidDate});
+  }
+ }catch(e){failure(e);return;}
+ if(!confirm('CONFIRMAR BAIXA DE PAGAMENTOS\n\n'+plans.length+' conta(s) no total de '+money(plans.reduce((s,x)=>s+Number(x.p.actual_amount),0))+'.\n\nIsso registra como PAGA no Financeiro HSN, mas NÃO envia pagamentos ao banco. Confirmar?'))return;
+ await operation(async()=>{
+  let done=0;const failures=[];
+  for(const {c,p,date} of plans){
+   try{
+    const result=check(await db.from('payables').update({payment_status:'paid',paid_date:date}).eq('id',p.id).eq('updated_at',p.updated_at).select('id'));
+    if(result.length!==1)throw Error('A conta mudou desde a conferência. Atualize e revise.');
+    done++;selectedDdaIds.delete(c.id);
+   }catch(e){failures.push((c.document_number||c.title)+': '+(e.message||'Falhou'));}
+  }
+  dialog.close();await HSN_FINANCE.load(view);
+  notice(done+' conta(s) marcada(s) como pagas. '+(failures.length?failures.length+' falha(s): '+failures.slice(0,4).join(' | '):'Os comprovantes permanecem nas contas vinculadas.'),failures.length>0);
+ });
 }
 async function runDdaBatch(action){
  if(busy)return;
