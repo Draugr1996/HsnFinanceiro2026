@@ -2,6 +2,27 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const titles={suppliers:'Fornecedores',account_types:'Tipos de conta',message_templates:'Mensagens prontas',payables:'Contas a pagar',recurring_models:'Contas recorrentes',calendar:'Calendário',local_holidays:'Feriados locais',alerts:'Alertas de contas',commissions:'Comissões',commission_alerts:'Alertas de comissões',alert_settings:'Configurações de alertas',dda:'DDA',imports:'Importar / exportar',reports:'Relatórios',cash_forecast:'Previsão de caixa',audit:'Histórico de alterações',adjustments:'Reajustes de contrato',backups:'Backups',push:'Notificações no telefone',zoho_connect:'Conexão Zoho Mail',sicoob_collections:'Cobranças Sicoob'};
+
+/* Sugestões opcionais; usuários escolhem quais cadastrar. Nunca renomeia tipos existentes. */
+const recommendedTypes=[
+ ['Energia elétrica','#f59e0b'],['Água e esgoto','#0ea5e9'],['Internet e telefonia','#6366f1'],
+ ['Aluguel e condomínio','#8b5cf6'],['Manutenção','#f97316'],['Limpeza e lavanderia','#10b981'],
+ ['Materiais e suprimentos','#14b8a6'],['Serviços terceirizados','#3b82f6'],
+ ['Impostos e taxas','#ef4444'],['Administrativo','#64748b'],['Outros','#94a3b8']
+];
+async function addRecommendedTypes(){
+ if(busy)return;
+ await operation(async()=>{
+  const existing=check(await db.from('account_types').select('*').eq('owner_id',user.id));
+  const old=new Set(existing.map(t=>HSN_IMPORT_RULES.normalize(t.name)));
+  const pending=recommendedTypes.filter(([name])=>!old.has(HSN_IMPORT_RULES.normalize(name)));
+  if(!pending.length){notice('Todos os tipos sugeridos já estão cadastrados.');return;}
+  if(!confirm('Adicionar '+pending.length+' tipos de conta sugeridos?\n\n'+pending.map(x=>'• '+x[0]).join('\n')+'\n\nNenhum cadastro atual será alterado. Depois você poderá editar ou excluir os novos tipos.'))return;
+  const errors=[];let created=0;
+  for(const [name,color] of pending){try{const updated=check(await db.from('account_types').select('id,name').eq('owner_id',user.id));if(updated.some(t=>HSN_IMPORT_RULES.normalize(t.name)===HSN_IMPORT_RULES.normalize(name)))continue;check(await db.from('account_types').insert({owner_id:user.id,name,color}));created++;}catch(e){errors.push(name+': '+e.message);}}
+  await load();notice(created+' tipo(s) cadastrado(s). '+(errors.length?errors.length+' falha(s): '+errors.slice(0,2).join(' | '):'Você pode editar os nomes e as cores.'),errors.length>0);
+ });
+}
 const supplierFields=[['legal_name','Razão social / nome completo',true],['trade_name','Nome fantasia'],['tax_id','CNPJ / CPF (opcional)'],['service_type','Tipo de serviço'],['postal_code','CEP'],['street','Logradouro'],['address_number','Número'],['complement','Complemento'],['neighborhood','Bairro'],['city','Cidade'],['state','UF'],['bank','Banco'],['bank_branch','Agência'],['bank_account','Conta'],['pix_key','Chave PIX'],['notes','Observações']];
 let db=null,user=null,view=HSN_PUSH.initialView(),rows=[],templates=[],editing=null,waSupplier=null,busy=false,loadToken=0,installPrompt=null;
 function notice(message='',error=false){$('notice').textContent=message;$('notice').className=error?'error':'';}
@@ -38,6 +59,8 @@ function render(){
  $('new').hidden=false;HSN_PHASE3.clearCalendar();$('new').textContent='Novo cadastro';$('finance-controls').replaceChildren();$('summary').replaceChildren();$('calendar-board').replaceChildren();
  $('view-title').textContent=titles[view];document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  const term=$('search').value.toLocaleLowerCase('pt-BR');const list=rows.filter(r=>JSON.stringify(r).toLocaleLowerCase('pt-BR').includes(term));$('records').replaceChildren();
+ if(view==='account_types'){const help=el('section',undefined,'card full-width hsn-type-suggestions');help.append(el('h3','Tipos de conta personalizados'),el('p','Você pode editar qualquer tipo existente, adicionar novos ou incluir uma lista inicial sugerida. Nenhuma alteração ocorre sem confirmação.'));help.append(button('Adicionar tipos sugeridos',addRecommendedTypes,'primary'));$('records').append(help);}
+ if(view==='suppliers'){const help=el('section',undefined,'card full-width hsn-type-suggestions');help.append(el('h3','Fornecedores integrados ao DDA'),el('p','Beneficiários captados do DDA ficam aqui, com nome e CPF/CNPJ. Você pode corrigir os dados e reutilizar o fornecedor em novas contas a pagar.'));$('records').append(help);}
  if(!list.length){$('records').append(el('p','Nenhum cadastro encontrado.'));return;}
  list.forEach(r=>{
  const card=el('article',undefined,'record'),heading=el('h2',r.legal_name||r.name||r.title);
