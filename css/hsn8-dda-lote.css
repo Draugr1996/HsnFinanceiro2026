@@ -97,3 +97,13 @@
  .hsn-batch-footer{padding:12px;gap:8px}
  .hsn-batch-footer button{flex:1;padding:10px 6px!important}
 }
+
+/* HSN 8.5 — pesquisa de fornecedores e tipos personalizáveis */
+.hsn-supplier-picker {min-width:0;display:flex;flex-direction:column;gap:8px}
+.hsn-supplier-picker input[type="search"] {min-height:42px;width:100%;border-radius:10px}
+.hsn-supplier-picker label {min-width:0}
+.hsn-account-type-actions {display:flex;align-items:flex-end;gap:8px}
+.hsn-account-type-actions button {min-height:42px;white-space:normal}
+.hsn-type-suggestions {border-radius:14px;padding:18px 22px}
+.hsn-type-suggestions p {max-width:80ch}
+@media(max-width:680px){.hsn-account-type-actions button{width:100%}}
